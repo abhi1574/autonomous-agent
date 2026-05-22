@@ -7,7 +7,17 @@ from ..schemas.task import TaskCreate, TaskResponse
 from ..middleware.auth import verify_token
 from ..websocket.manager import manager
 
+#wiring orchestrator with FastApi
+from agents.orchestrator.planner import Planner
+from agents.orchestrator.dispatcher import Dispatcher
+from memory.task_memory import TaskMemory
+from backend.models.task import TaskStatus
+
 router = APIRouter()
+
+planner    = Planner()
+dispatcher = Dispatcher()
+task_mem   = TaskMemory()
 
 @router.post("/tasks", response_model=TaskResponse)
 def create_task(
@@ -15,10 +25,20 @@ def create_task(
     db: Session = Depends(get_db),
     _: dict = Depends(verify_token)
 ):
+    # 1. Save task to PostgreSQL
     task = Task(title=payload.title, description=payload.description)
     db.add(task)
     db.commit()
     db.refresh(task)
+
+    # 2. Plan subtasks via Groq
+    subtasks = planner.plan(task.title, task.description or "")
+
+    # 3. Dispatch subtasks to queue
+    if subtasks:
+        task_mem.update_task_status(str(task.id), TaskStatus.running)
+        dispatcher.dispatch(str(task.id), subtasks)
+    
     return task
 
 @router.get("/tasks/{task_id}", response_model=TaskResponse)
