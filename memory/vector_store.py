@@ -64,12 +64,12 @@ class VectorStore:
                 ]
             )
 
-        results = self.client.search(
+        results = self.client.query_points(
             collection_name=COLLECTION_NAME,
-            query_vector=vector,
+            query=vector,
             limit=limit,
             query_filter=query_filter
-        )
+        ).points
 
         return [
             {"score": r.score, "text": r.payload.get("text"), "metadata": r.payload}
