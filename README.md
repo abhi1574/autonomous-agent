@@ -15,7 +15,7 @@ A multi-agent orchestration system built with FastAPI, React, and Claude API.
 - [x] Phase 1 — Local infrastructure (PostgreSQL + Redis + Qdrant)
 - [x] Phase 2 — FastAPI Gateway
 - [x] Phase 3 — Orchestrator Core
-- [ ] Phase 4 — Agents
+- [x] Phase 4 — Agents
 - [ ] Phase 5 — Tool Router
 - [ ] Phase 6 — React Frontend
 - [ ] Phase 7 — Integration & Hardening
