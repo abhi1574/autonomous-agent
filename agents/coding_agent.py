@@ -1,69 +1,36 @@
 from agents.base_agent import BaseAgent
-from groq import Groq
-import os
-import subprocess
-import tempfile
-from dotenv import load_dotenv
-
-load_dotenv()
 
 class CodingAgent(BaseAgent):
     def __init__(self):
         super().__init__("coding")
-        self.groq  = Groq(api_key=os.getenv("GROQ_API_KEY"))
-        self.model = os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile")
 
     def execute(self, job: dict) -> str:
         task = job.get("description") or job.get("title")
 
-        # Generate code via Groq
-        response = self.groq.chat.completions.create(
-            model=self.model,
-            messages=[
-                {
-                    "role": "system",
-                    "content": """You are an expert software engineer.
-Write clean, well commented code.
-Always include:
-- Brief explanation of what the code does
-- The code itself
-- Example usage"""
-                },
-                {
-                    "role": "user",
-                    "content": task
-                }
-            ],
-            temperature=0.2,
+        # Generate code
+        code_response = self.router.run(
+            tool_name  = "llm",
+            input      = {
+                "system": "You are an expert software engineer. Return ONLY raw Python code with no markdown, no fences, no explanation.",
+                "prompt": task
+            },
+            agent_name = self.agent_name,
+            task_id    = job.get("task_id")
         )
 
-        result = response.choices[0].message.content
+        # Strip markdown fences if model adds them anyway
+        clean_code = code_response
+        if "```python" in clean_code:
+            clean_code = clean_code.split("```python")[1].split("```")[0].strip()
+        elif "```" in clean_code:
+            clean_code = clean_code.split("```")[1].split("```")[0].strip()
 
-        # Try to execute if it's Python code
-        if "```python" in result:
-            try:
-                code_block = result.split("```python")[1].split("```")[0].strip()
-                with tempfile.NamedTemporaryFile(
-                    mode="w", suffix=".py", delete=False
-                ) as f:
-                    f.write(code_block)
-                    temp_path = f.name
+        # Execute clean code
+        execution_result = self.router.run(
+            tool_name  = "code_executor",
+            input      = {"code": clean_code},
+            agent_name = self.agent_name,
+            task_id    = job.get("task_id")
+        )
 
-                execution = subprocess.run(
-                    ["python", temp_path],
-                    capture_output=True,
-                    text=True,
-                    timeout=10
-                )
-                if execution.stdout:
-                    result += f"\n\n**Execution Output:**\n{execution.stdout}"
-                if execution.stderr:
-                    result += f"\n\n**Execution Errors:**\n{execution.stderr}"
-
-                os.unlink(temp_path)
-            except subprocess.TimeoutExpired:
-                result += "\n\n**Execution timed out after 10 seconds**"
-            except Exception as e:
-                result += f"\n\n**Execution skipped:** {e}"
-
-        return result
+        return f"Generated Code:\n{clean_code}\n\nExecution Result:\n{execution_result}"

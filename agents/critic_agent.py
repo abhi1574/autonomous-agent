@@ -1,20 +1,16 @@
 from agents.base_agent import BaseAgent
-from groq import Groq
-import os
-from dotenv import load_dotenv
-
-load_dotenv()
 
 class CriticAgent(BaseAgent):
     def __init__(self):
         super().__init__("critic")
-        self.groq  = Groq(api_key=os.getenv("GROQ_API_KEY"))
-        self.model = os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile")
 
     def execute(self, job: dict) -> str:
-        # Fetch recent results from memory to critique
+        # Generate real embedding for task context
+        query_vector = self.router.embed(job.get("title", ""))
+
+        # Search for relevant outputs from other agents
         results = self.vector.search(
-            vector=[0.0] * 384,
+            vector=query_vector,
             limit=3,
             filter_by={"task_id": job.get("task_id")}
         )
@@ -27,25 +23,18 @@ class CriticAgent(BaseAgent):
             for i, r in enumerate(results)
         ])
 
-        response = self.groq.chat.completions.create(
-            model=self.model,
-            messages=[
-                {
-                    "role": "system",
-                    "content": """You are a critical reviewer for an AI agent system.
-Review the provided outputs and:
-1. Identify strengths
-2. Identify weaknesses or gaps
-3. Give an overall quality score (1-10)
-4. Suggest improvements
-Be concise and specific."""
-                },
-                {
-                    "role": "user",
-                    "content": f"Task: {job.get('title')}\n\nOutputs to review:\n{content_to_review}"
-                }
-            ],
-            temperature=0.3,
+        return self.router.run(
+            tool_name  = "llm",
+            input      = {
+                "system": """You are a critical reviewer for an AI agent system.
+                Review the provided outputs and:
+                1. Identify strengths
+                2. Identify weaknesses or gaps
+                3. Give an overall quality score (1-10)
+                4. Suggest improvements
+                Be concise and specific.""",
+                "prompt": f"Task: {job.get('title')}\n\nOutputs to review:\n{content_to_review}"
+            },
+            agent_name = self.agent_name,
+            task_id    = job.get("task_id")
         )
-
-        return response.choices[0].message.content

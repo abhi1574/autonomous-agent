@@ -1,28 +1,25 @@
-from tavily import TavilyClient
 from agents.base_agent import BaseAgent
-import os
-from dotenv import load_dotenv
-
-load_dotenv()
+import time
 
 class ResearchAgent(BaseAgent):
     def __init__(self):
         super().__init__("research")
-        self.client = TavilyClient(api_key=os.getenv("TAVILY_API_KEY"))
 
     def execute(self, job: dict) -> str:
         query   = job.get("description") or job.get("title")
-        results = self.client.search(
-            query=query,
-            max_results=5,
-            search_depth="advanced"
-        )
+        retries = 3
 
-        # Format results into readable summary
-        summary = f"Research Results for: {query}\n\n"
-        for i, result in enumerate(results.get("results", []), 1):
-            summary += f"{i}. {result.get('title')}\n"
-            summary += f"   URL: {result.get('url')}\n"
-            summary += f"   {result.get('content', '')[:300]}\n\n"
+        for attempt in range(retries):
+            try:
+                return self.router.run(
+                    tool_name  = "web_search",
+                    input      = {"query": query, "max_results": 5},
+                    agent_name = self.agent_name,
+                    task_id    = job.get("task_id")
+                )
+            except Exception as e:
+                print(f"⚠️ Research attempt {attempt+1} failed: {e}")
+                if attempt < retries - 1:
+                    time.sleep(2 ** attempt)  # exponential backoff
 
-        return summary
+        return f"Research failed after {retries} attempts for: {query}"
