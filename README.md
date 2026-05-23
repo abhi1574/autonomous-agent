@@ -16,7 +16,7 @@ A multi-agent orchestration system built with FastAPI, React, and Claude API.
 - [x] Phase 2 — FastAPI Gateway (JWT auth + Task endpoints + WebSocket)
 - [x] Phase 3 — Orchestrator Core (Planner + Dispatcher + Memory)
 - [x] Phase 4 — Agents (Research + RAG + Critic + Coding + Browser)
-- [ ] Phase 5 — Tool Router
+- [x] Phase 5 — Tool Router (Central registry + real embeddings + PostgreSQL logging)
 - [ ] Phase 6 — React Frontend
 - [ ] Phase 7 — Integration & Hardening
 
