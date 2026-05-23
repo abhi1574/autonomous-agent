@@ -1,7 +1,7 @@
 import uuid
+import datetime
 from .task_queue import TaskQueue
 
-# Mock agents — Phase 4 will replace these with real implementations
 AVAILABLE_AGENTS = ["research", "rag", "critic", "coding", "browser"]
 
 class Dispatcher:
@@ -9,37 +9,71 @@ class Dispatcher:
         self.queue = TaskQueue()
 
     def dispatch(self, task_id: str, subtasks: list[dict]) -> list[dict]:
-        """Route subtasks to agents via the task queue"""
+        """Route subtasks to agents via the task queue respecting dependencies"""
         dispatched = []
+        skipped    = []
 
-        for subtask in subtasks:
-            agent = subtask.get("agent")
+        # Separate independent and dependent subtasks
+        independent = [s for s in subtasks if not s.get("depends_on")]
+        dependent   = [s for s in subtasks if s.get("depends_on")]
 
-            if agent not in AVAILABLE_AGENTS:
-                print(f"⚠️ Unknown agent '{agent}' — skipping subtask {subtask.get('subtask_id')}")
-                continue
-
-            job = {
-                "job_id"      : str(uuid.uuid4()),
-                "task_id"     : task_id,
-                "subtask_id"  : subtask.get("subtask_id"),
-                "title"       : subtask.get("title"),
-                "description" : subtask.get("description"),
-                "agent"       : agent,
-                "depends_on"  : subtask.get("depends_on", []),
-                "status"      : "queued"
-            }
-
-            if self.queue.push(job):
-                dispatched.append(job)
-                print(f"✅ Dispatched subtask {subtask.get('subtask_id')} → {agent} agent")
+        # Push independent subtasks first
+        for subtask in independent:
+            result = self._push_job(task_id, subtask)
+            if result:
+                dispatched.append(result)
             else:
-                print(f"❌ Failed to dispatch subtask {subtask.get('subtask_id')}")
+                skipped.append(subtask.get("subtask_id"))
+
+        # Push dependent subtasks after
+        for subtask in dependent:
+            result = self._push_job(task_id, subtask)
+            if result:
+                dispatched.append(result)
+            else:
+                skipped.append(subtask.get("subtask_id"))
+
+        # Summary log
+        print(f"📋 Dispatch summary — {len(dispatched)} queued, {len(skipped)} skipped")
+        if skipped:
+            print(f"⚠️  Skipped subtask IDs: {skipped}")
 
         return dispatched
+
+    def _push_job(self, task_id: str, subtask: dict) -> dict | None:
+        """Build and push a single job to the queue"""
+        agent = subtask.get("agent")
+
+        if agent not in AVAILABLE_AGENTS:
+            print(f"⚠️  Unknown agent '{agent}' — skipping subtask {subtask.get('subtask_id')}")
+            return None
+
+        job = {
+            "job_id"       : str(uuid.uuid4()),
+            "task_id"      : task_id,
+            "subtask_id"   : subtask.get("subtask_id"),
+            "title"        : subtask.get("title"),
+            "description"  : subtask.get("description"),
+            "agent"        : agent,
+            "depends_on"   : subtask.get("depends_on", []),
+            "status"       : "queued",
+            "retry_count"  : 0,
+            "dispatched_at": str(datetime.datetime.utcnow())
+        }
+
+        if self.queue.push(job):
+            print(f"✅ Queued subtask {subtask.get('subtask_id')} → {agent} agent")
+            return job
+        else:
+            print(f"❌ Failed to queue subtask {subtask.get('subtask_id')}")
+            return None
 
     def get_queue_size(self) -> int:
         return self.queue.size()
 
     def get_pending_jobs(self) -> list:
         return self.queue.peek()
+
+    def clear_queue(self) -> bool:
+        """Clear all pending jobs — useful for testing"""
+        return self.queue.clear()

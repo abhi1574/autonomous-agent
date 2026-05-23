@@ -11,7 +11,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 COLLECTION_NAME = "agent_memory"
-VECTOR_SIZE     = 384  # will use embedding model in Phase 4
+VECTOR_SIZE     = 384
 
 class VectorStore:
     def __init__(self):
@@ -22,7 +22,6 @@ class VectorStore:
         self._ensure_collection()
 
     def _ensure_collection(self):
-        """Create collection if it doesn't exist"""
         collections = [c.name for c in self.client.get_collections().collections]
         if COLLECTION_NAME not in collections:
             self.client.create_collection(
@@ -36,42 +35,54 @@ class VectorStore:
         else:
             print(f"✅ Qdrant collection exists: {COLLECTION_NAME}")
 
-    def store(self, text: str, metadata: dict, vector: list[float]) -> str:
-        """Store a memory with its vector embedding"""
+    def store(
+        self,
+        text    : str,
+        metadata: dict,
+        vector  : list[float]   # caller always provides real vector
+    ) -> str:
         point_id = str(uuid.uuid4())
         self.client.upsert(
             collection_name=COLLECTION_NAME,
             points=[
                 PointStruct(
-                    id=point_id,
-                    vector=vector,
-                    payload={"text": text, **metadata}
+                    id     = point_id,
+                    vector = vector,
+                    payload= {"text": text, **metadata}
                 )
             ]
         )
         return point_id
 
-    def search(self, vector: list[float], limit: int = 5, filter_by: dict = None) -> list[dict]:
-        """Search for similar memories"""
+    def search(
+        self,
+        vector   : list[float],  # caller always provides real vector
+        limit    : int = 5,
+        filter_by: dict = None
+    ) -> list[dict]:
         query_filter = None
         if filter_by:
             query_filter = Filter(
                 must=[
                     FieldCondition(
-                        key=k,
-                        match=MatchValue(value=v)
+                        key  = k,
+                        match= MatchValue(value=v)
                     ) for k, v in filter_by.items()
                 ]
             )
 
         results = self.client.query_points(
             collection_name=COLLECTION_NAME,
-            query=vector,
-            limit=limit,
-            query_filter=query_filter
+            query         = vector,
+            limit         = limit,
+            query_filter  = query_filter
         ).points
 
         return [
-            {"score": r.score, "text": r.payload.get("text"), "metadata": r.payload}
+            {
+                "score"   : r.score,
+                "text"    : r.payload.get("text"),
+                "metadata": r.payload
+            }
             for r in results
         ]

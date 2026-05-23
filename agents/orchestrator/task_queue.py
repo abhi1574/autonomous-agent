@@ -56,3 +56,22 @@ class TaskQueue:
         except Exception as e:
             print(f"❌ Queue clear failed: {e}")
             return False
+    
+    def mark_completed(self, task_id: str, subtask_id: str):
+        """Mark a subtask as completed in Redis"""
+        key = f"completed:{task_id}"
+        self.client.sadd(key, subtask_id)
+        self.client.expire(key, 86400)  # expire after 24 hours
+        print(f"✅ Marked subtask {subtask_id} complete for task {task_id}")
+
+    def get_completed(self, task_id: str) -> set:
+        """Get all completed subtask IDs for a task"""
+        key = f"completed:{task_id}"
+        return self.client.smembers(key)
+
+    def dependencies_met(self, task_id: str, depends_on: list) -> bool:
+        """Check if all dependencies are completed"""
+        if not depends_on:
+            return True
+        completed = self.get_completed(task_id)
+        return all(dep in completed for dep in depends_on)

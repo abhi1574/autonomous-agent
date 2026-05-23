@@ -3,6 +3,7 @@ from sqlalchemy.orm import Session
 from uuid import UUID
 from ..models.database import get_db
 from ..models.task import Task
+from ..models.task import ToolLog
 from ..schemas.task import TaskCreate, TaskResponse
 from ..middleware.auth import verify_token
 from ..websocket.manager import manager
@@ -58,6 +59,25 @@ def list_tasks(
     _: dict = Depends(verify_token)
 ):
     return db.query(Task).order_by(Task.created_at.desc()).all()
+
+@router.get("/tool-logs")
+def get_tool_logs(
+    db: Session = Depends(get_db),
+    _: dict = Depends(verify_token)
+):
+    logs = db.query(ToolLog).order_by(ToolLog.created_at.desc()).limit(50).all()
+    return [
+        {
+            "id"         : str(log.id),
+            "tool_name"  : log.tool_name,
+            "agent_name" : log.agent_name,
+            "task_id"    : log.task_id,
+            "status"     : log.status,
+            "duration_ms": log.duration_ms,
+            "created_at" : str(log.created_at)
+        }
+        for log in logs
+    ]
 
 @router.websocket("/ws/{client_id}")
 async def websocket_endpoint(websocket: WebSocket, client_id: str):
