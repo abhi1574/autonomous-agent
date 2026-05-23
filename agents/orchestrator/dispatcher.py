@@ -58,7 +58,7 @@ class Dispatcher:
             "depends_on"   : subtask.get("depends_on", []),
             "status"       : "queued",
             "retry_count"  : 0,
-            "dispatched_at": str(datetime.datetime.utcnow())
+            "dispatched_at": str(datetime.datetime.now(datetime.UTC))
         }
 
         if self.queue.push(job):

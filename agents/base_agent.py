@@ -1,5 +1,6 @@
 import os
 import datetime
+from datetime import UTC
 from abc import ABC, abstractmethod
 from dotenv import load_dotenv
 from agents.orchestrator.task_queue import TaskQueue
@@ -62,7 +63,7 @@ class BaseAgent(ABC):
                     )
                     continue
 
-                self.queue.push(job)  # put back and wait
+                self.queue.push(job)
                 continue
 
             print(f"⚙️  {self.agent_name} picked up subtask {subtask_id}: {job.get('title')}")
@@ -87,12 +88,12 @@ class BaseAgent(ABC):
                         "job_id"    : job.get("job_id"),
                         "subtask_id": subtask_id,
                         "title"     : job.get("title"),
-                        "timestamp" : str(datetime.datetime.utcnow())
+                        "timestamp" : str(datetime.datetime.now(UTC))
                     },
                     vector  = embedding
                 )
 
-                # Mark this subtask as completed in Redis
+                # Mark subtask complete in Redis
                 self.queue.mark_completed(task_id, subtask_id)
 
                 print(f"✅ {self.agent_name} completed subtask {subtask_id}: {job.get('title')}")
@@ -117,7 +118,7 @@ class BaseAgent(ABC):
                 "task_id"  : job.get("task_id"),
                 "job_id"   : job.get("job_id"),
                 "title"    : job.get("title"),
-                "timestamp": str(datetime.datetime.utcnow())
+                "timestamp": str(datetime.datetime.now(UTC))
             },
             vector  = embedding
         )

@@ -26,3 +26,8 @@ uv venv && .venv\Scripts\activate
 uv add fastapi uvicorn sqlalchemy psycopg2-binary redis qdrant-client python-dotenv
 python check_infra.py
 ```
+
+## Testing
+- **69 tests** — Unit + Integration + API
+- **85% coverage**
+- Run: `pytest tests/ -v --cov=. --cov-report=term-missing`

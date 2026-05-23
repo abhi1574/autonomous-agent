@@ -19,7 +19,7 @@ class TaskMemory:
             task = db.query(Task).filter(Task.id == task_id).first()
             if task:
                 task.status     = status
-                task.updated_at = datetime.datetime.utcnow()
+                task.updated_at = datetime.datetime.now(datetime.UTC)
                 if result:
                     task.result = result
                 db.commit()

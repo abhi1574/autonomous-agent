@@ -1,7 +1,9 @@
+import uuid
+import enum
+from datetime import datetime, UTC
 from sqlalchemy import Column, String, Text, DateTime, Enum, Integer
 from sqlalchemy.dialects.postgresql import UUID
 from .database import Base
-import uuid, enum, datetime
 
 class TaskStatus(str, enum.Enum):
     pending   = "pending"
@@ -17,8 +19,9 @@ class Task(Base):
     description = Column(Text, nullable=True)
     status      = Column(Enum(TaskStatus), default=TaskStatus.pending, nullable=False)
     result      = Column(Text, nullable=True)
-    created_at  = Column(DateTime, default=datetime.datetime.utcnow)
-    updated_at  = Column(DateTime, default=datetime.datetime.utcnow, onupdate=datetime.datetime.utcnow)
+    created_at  = Column(DateTime, default=lambda: datetime.now(UTC))
+    updated_at  = Column(DateTime, default=lambda: datetime.now(UTC), onupdate=lambda: datetime.now(UTC))
+
 
 class ToolLog(Base):
     __tablename__ = "tool_logs"
@@ -31,4 +34,4 @@ class ToolLog(Base):
     output      = Column(Text, nullable=True)
     status      = Column(String(50), default="success")
     duration_ms = Column(Integer, nullable=True)
-    created_at  = Column(DateTime, default=datetime.datetime.utcnow)
+    created_at  = Column(DateTime, default=lambda: datetime.now(UTC))
