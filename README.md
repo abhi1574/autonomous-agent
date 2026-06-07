@@ -5,11 +5,20 @@
 - [x] Phase 4 — Agents (Research + RAG + Critic + Coding + Browser)
 - [x] Phase 5 — Tool Router (Central registry + real embeddings + PostgreSQL logging)
 - [x] Phase 6 — React Frontend (Login + Register + Dashboard + WebSocket feed)
-- [ ] Phase 7 — Integration & Hardening
+- [x] Phase 7 — Integration & Hardening (Logging + Rate limiting + Env validation)
+
+## Status
+✅ All 7 phases complete — production ready
 
 ## Running locally
 # Backend
 uvicorn backend.main:app --reload --port 8000
 
-# Frontend
+# Frontend  
 cd frontend && npm run dev
+
+# Tests
+pytest tests/ -v --cov=. --cov-report=term-missing
+
+# Seed default user
+python seed_user.py
