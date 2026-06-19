@@ -15,10 +15,26 @@ VECTOR_SIZE     = 384
 
 class VectorStore:
     def __init__(self):
-        self.client = QdrantClient(
-            host=os.getenv("QDRANT_HOST", "localhost"),
-            port=int(os.getenv("QDRANT_PORT", 6333))
-        )
+        qdrant_api_key = os.getenv("QDRANT_API_KEY")
+        qdrant_host    = os.getenv("QDRANT_HOST", "localhost")
+        qdrant_port    = int(os.getenv("QDRANT_PORT", 6333))
+
+        if qdrant_api_key:
+            # Qdrant Cloud
+            self.client = QdrantClient(
+                host   =qdrant_host,
+                port   =qdrant_port,
+                api_key=qdrant_api_key,
+                https  =True
+            )
+        else:
+            # Local Qdrant
+            self.client = QdrantClient(
+                host=qdrant_host,
+                port=qdrant_port
+            )
+
+        self.collection_name = "agent_memory"
         self._ensure_collection()
 
     def _ensure_collection(self):

@@ -14,23 +14,26 @@ class Planner:
 
     def plan(self, task_title: str, task_description: str) -> list[dict]:
         prompt = f"""You are an AI task planner for an autonomous agent system.
-Break down this task into clear, actionable subtasks.
-Each subtask must be assigned to one of: research, rag, critic, coding, browser
+        Break down this task into clear, actionable subtasks.
 
-Task Title: {task_title}
-Task Description: {task_description}
+        STRICT RULES:
+        - Maximum 4 subtasks
+        - Use ONLY: research, rag, critic
+        - NEVER use browser unless task has a URL starting with http or https
+        - NEVER use coding unless task explicitly asks to write code
+        - ALL depends_on must be EMPTY [] — never add dependencies
+        - subtask_id must be: "1", "2", "3", "4"
+        - Order subtasks so research runs first, critic runs last
 
-Respond ONLY with a valid JSON array. No explanation, no markdown.
-Format:
-[
-  {{
-    "subtask_id": "1",
-    "title": "short title",
-    "description": "what needs to be done",
-    "agent": "research|rag|critic|coding|browser",
-    "depends_on": []
-  }}
-]"""
+        Task Title: {task_title}
+        Task Description: {task_description}
+
+        Respond ONLY with valid JSON array. No markdown, no explanation.
+        [
+        {{"subtask_id": "1", "title": "Search web", "description": "Search for {task_title}", "agent": "research", "depends_on": []}},
+        {{"subtask_id": "2", "title": "Search knowledge base", "description": "Search stored knowledge", "agent": "rag", "depends_on": []}},
+        {{"subtask_id": "3", "title": "Critique and summarise", "description": "Review all findings and provide detailed summary", "agent": "critic", "depends_on": []}}
+        ]"""
 
         try:
             response = self.client.chat.completions.create(

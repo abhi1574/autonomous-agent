@@ -1,5 +1,6 @@
 import datetime
 from datetime import UTC
+import time
 from abc import ABC, abstractmethod
 from dotenv import load_dotenv
 from agents.orchestrator.task_queue import TaskQueue
@@ -49,7 +50,7 @@ class BaseAgent(ABC):
                 job["retry_count"] = job.get("retry_count", 0) + 1
                 self.logger.warning(f"Dependencies not met for subtask {subtask_id} — retry {job['retry_count']}/10")
 
-                if job["retry_count"] > 10:
+                if job["retry_count"] > 30:
                     self.logger.error(f"Subtask {subtask_id} exceeded retry limit — dropping")
                     self.task_memory.update_task_status(
                         task_id=task_id,
@@ -59,6 +60,7 @@ class BaseAgent(ABC):
                     continue
 
                 self.queue.push(job)
+                time.sleep(3)
                 continue
 
             self.logger.info(f"Picked up subtask {subtask_id}: {job.get('title')}")

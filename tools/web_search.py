@@ -9,22 +9,26 @@ class WebSearchTool:
     description = "Search the web using Tavily and return summarised results"
 
     def __init__(self):
-        self.client = TavilyClient(api_key=os.getenv("TAVILY_API_KEY"))
+        pass  # don't import at init time
 
     def run(self, input: dict) -> str:
-        query       = input.get("query", "")
-        max_results = input.get("max_results", 5)
-
-        results = self.client.search(
-            query=query,
-            max_results=max_results,
-            search_depth="advanced"
-        )
-
-        summary = f"Search Results for: {query}\n\n"
-        for i, r in enumerate(results.get("results", []), 1):
-            summary += f"{i}. {r.get('title')}\n"
-            summary += f"   URL: {r.get('url')}\n"
-            summary += f"   {r.get('content', '')[:300]}\n\n"
-
-        return summary
+        try:
+            from tavily import TavilyClient  # ← lazy import here
+            import os
+            client  = TavilyClient(api_key=os.getenv("TAVILY_API_KEY"))
+            query   = input.get("query", "")
+            results = client.search(
+                query       = query,
+                max_results = input.get("max_results", 5),
+                search_depth= "advanced"
+            )
+            summary = f"Search Results for: {query}\n\n"
+            for i, r in enumerate(results.get("results", []), 1):
+                summary += f"{i}. {r.get('title')}\n"
+                summary += f"   URL: {r.get('url')}\n"
+                summary += f"   {r.get('content', '')[:300]}\n\n"
+            return summary
+        except ImportError:
+            return "❌ Tavily not installed. Run: uv add tavily-python"
+        except Exception as e:
+            return f"❌ Web search failed: {e}"

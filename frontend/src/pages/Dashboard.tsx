@@ -13,6 +13,7 @@ import ToolLogs  from '../components/tools/ToolLogs'
 import { useTasks } from '../hooks/useTasks'
 import { useWebSocket } from '../hooks/useWebSocket'
 import { useAuthStore } from '../store/authStore'
+import { tasksApi } from '../api/client'
 
 const CLIENT_ID = uuidv4()
 
@@ -28,8 +29,24 @@ export default function Dashboard() {
   const { messages, connected } = useWebSocket(CLIENT_ID)
   const { user } = useAuthStore()
 
-  useEffect(() => { fetchTasks(); fetchToolLogs() }, [])
+  // Initial load
+  useEffect(() => {
+    fetchTasks()
+    fetchToolLogs()
+  }, [])
 
+  // Auto refresh every 5 seconds when on dashboard or tasks page
+  useEffect(() => {
+    const interval = setInterval(() => {
+      if (page === 'tasks' || page === 'dashboard') {
+        fetchTasks()
+        fetchToolLogs()
+      }
+    }, 5000)
+    return () => clearInterval(interval)
+  }, [page])
+
+  // WebSocket messages → live feed
   useEffect(() => {
     if (messages.length > 0) {
       const m = messages[0]
@@ -42,9 +59,34 @@ export default function Dashboard() {
     }
   }, [messages])
 
+  const addFeed = (agent: string, text: string, color: string) => {
+    setFeedMsgs(prev => [{ agent, text, time: 'just now', color }, ...prev].slice(0, 20))
+  }
+
+  const getAgentMsg = (agent: string, i: number): string => {
+    const msgs: Record<string, string[]> = {
+      research: ['searching web for latest results',     'web search completed successfully'   ],
+      rag     : ['querying Qdrant vector store',         'synthesised answer from memories'    ],
+      critic  : ['reviewing and scoring agent outputs',  'final review complete — score 8/10'  ],
+      coding  : ['generating code solution',             'code executed successfully'           ],
+      browser : ['launching browser and navigating URL', 'page content extracted successfully' ],
+    }
+    return msgs[agent]?.[i % 2] || 'processing subtask'
+  }
+
+  const getAgentColor = (agent: string): string => ({
+    research: '#185FA5',
+    rag     : '#0F6E56',
+    critic  : '#534AB7',
+    coding  : '#854F0B',
+    browser : '#993C1D',
+    planner : '#888780',
+  }[agent] || '#888780')
+
   const handleCreateTask = async (title: string, desc: string) => {
     const task = await createTask(title, desc)
     if (!task) return
+
     setActiveTask(task)
     setProgress(0)
     setPipeSteps([
@@ -58,56 +100,95 @@ export default function Dashboard() {
     setBusyAgents(['research'])
     addFeed('planner', 'breaking task into subtasks via Groq', '#888780')
 
-    // Simulate pipeline progress
     simulatePipeline(task)
     await fetchTasks()
   }
 
   const simulatePipeline = (task: any) => {
-    const agentSequence = ['research','rag','research','rag','critic','critic']
+    const agentSequence = ['research', 'rag', 'research', 'rag', 'critic', 'critic']
+
+    // Slower animation — 8 seconds per step to match real agent speed
     agentSequence.forEach((agent, i) => {
       setTimeout(() => {
         setPipeSteps(prev => prev.map((s, idx) => ({
           ...s,
-          status: idx < i   ? 'done' :
-                  idx === i ? 'running' : 'waiting'
+          status: idx < i        ? 'done'    :
+                  idx === i      ? 'running' : 'waiting'
         })))
-        setProgress(Math.round((i + 1) / agentSequence.length * 100))
+        setProgress(Math.round(i / agentSequence.length * 100))
         setBusyAgents([agent])
         addFeed(agent, getAgentMsg(agent, i), getAgentColor(agent))
-        if (i === agentSequence.length - 1) {
+      }, (i + 1) * 8000)  // ← 8 seconds per step
+    })
+
+    // Poll backend for REAL task result every 3 seconds
+    const pollInterval = setInterval(async () => {
+      try {
+        const res  = await tasksApi.get(task.id)
+        const data = res.data
+
+        if (data.status === 'completed' || data.status === 'failed') {
+          clearInterval(pollInterval)
+
+          // Only mark pipeline complete when backend confirms
+          setPipeSteps(prev => prev.map(s => ({ ...s, status: 'done' })))
+          setProgress(100)
           setBusyAgents([])
-          setActiveTask((prev: any) => prev ? { ...prev, status: 'completed', result: `Task completed successfully. ${agentSequence.length} subtasks executed across research, RAG and critic agents. Quality score: 8/10.` } : null)
+          setActiveTask(data)
           fetchTasks()
           fetchToolLogs()
         }
-      }, (i + 1) * 1500)
-    })
-  }
+      } catch {}
+    }, 3000)
 
-  const addFeed = (agent: string, text: string, color: string) => {
-    setFeedMsgs(prev => [{ agent, text, time: 'just now', color }, ...prev].slice(0, 20))
+    // Stop polling after 10 minutes max
+    setTimeout(() => clearInterval(pollInterval), 600000)
   }
-
-  const getAgentMsg = (agent: string, i: number) => {
-    const msgs: Record<string, string[]> = {
-      research: ['searching web for results', 'found 5 relevant results'],
-      rag     : ['querying Qdrant vector store', 'synthesised from 3 memories'],
-      critic  : ['reviewing agent outputs', 'final review complete — score 8/10'],
-    }
-    return msgs[agent]?.[i % 2] || 'processing subtask'
-  }
-
-  const getAgentColor = (agent: string) => ({
-    research: '#185FA5', rag: '#0F6E56', critic: '#534AB7',
-    coding: '#854F0B', browser: '#993C1D', planner: '#888780'
-  }[agent] || '#888780')
 
   const stats = [
-    { icon: 'ti-list-check',   bg: 'bg-brand-50',  color: 'text-brand-600', val: tasks.length,                                          label: 'Total tasks',   trend: `+${tasks.filter(t => new Date(t.created_at) > new Date(Date.now() - 86400000)).length} today`, trendColor: 'text-green-500' },
-    { icon: 'ti-circle-check', bg: 'bg-green-50',  color: 'text-green-600', val: tasks.filter(t => t.status === 'completed').length,     label: 'Completed',     trend: tasks.length ? Math.round(tasks.filter(t => t.status === 'completed').length / tasks.length * 100) + '% rate' : '—', trendColor: 'text-green-500' },
-    { icon: 'ti-tools',        bg: 'bg-orange-50', color: 'text-orange-600',val: toolLogs.length,                                        label: 'Tool calls',    trend: toolLogs.length ? 'avg ' + Math.round(toolLogs.filter(l => l.duration_ms).reduce((a, b) => a + (b.duration_ms || 0), 0) / toolLogs.filter(l => l.duration_ms).length) + 'ms' : '—', trendColor: 'text-gray-400' },
-    { icon: 'ti-subtask',      bg: 'bg-blue-50',   color: 'text-blue-600',  val: tasks.filter(t => t.status === 'running').length || 0,  label: 'Running now',   trend: busyAgents.length ? `${busyAgents.length} agents active` : 'all idle', trendColor: busyAgents.length ? 'text-orange-500' : 'text-gray-400' },
+    {
+      icon      : 'ti-list-check',
+      bg        : 'bg-brand-50',
+      color     : 'text-brand-600',
+      val       : tasks.length,
+      label     : 'Total tasks',
+      trend     : `+${tasks.filter(t => new Date(t.created_at) > new Date(Date.now() - 86400000)).length} today`,
+      trendColor: 'text-green-500'
+    },
+    {
+      icon      : 'ti-circle-check',
+      bg        : 'bg-green-50',
+      color     : 'text-green-600',
+      val       : tasks.filter(t => t.status === 'completed').length,
+      label     : 'Completed',
+      trend     : tasks.length
+        ? Math.round(tasks.filter(t => t.status === 'completed').length / tasks.length * 100) + '% rate'
+        : '—',
+      trendColor: 'text-green-500'
+    },
+    {
+      icon      : 'ti-tools',
+      bg        : 'bg-orange-50',
+      color     : 'text-orange-600',
+      val       : toolLogs.length,
+      label     : 'Tool calls',
+      trend     : toolLogs.filter(l => l.duration_ms).length
+        ? 'avg ' + Math.round(
+            toolLogs.filter(l => l.duration_ms).reduce((a, b) => a + (b.duration_ms || 0), 0) /
+            toolLogs.filter(l => l.duration_ms).length
+          ) + 'ms'
+        : '—',
+      trendColor: 'text-gray-400'
+    },
+    {
+      icon      : 'ti-subtask',
+      bg        : 'bg-blue-50',
+      color     : 'text-blue-600',
+      val       : tasks.filter(t => t.status === 'running').length,
+      label     : 'Running now',
+      trend     : busyAgents.length ? `${busyAgents.length} agents active` : 'all idle',
+      trendColor: busyAgents.length ? 'text-orange-500' : 'text-gray-400'
+    },
   ]
 
   return (
@@ -117,19 +198,25 @@ export default function Dashboard() {
         <Sidebar active={page} onChange={setPage} />
         <div className="flex-1 overflow-y-auto p-5">
 
-          {/* DASHBOARD */}
+          {/* ── DASHBOARD ── */}
           {page === 'dashboard' && (
             <div className="flex flex-col gap-3">
               <div>
                 <h1 className="text-lg font-medium text-gray-900">Dashboard</h1>
                 <p className="text-sm text-gray-500">Overview of your agent system</p>
               </div>
+
               <StatsRow stats={stats} />
+
               <div className="grid grid-cols-3 gap-3">
                 <div className="col-span-2 flex flex-col gap-3">
                   <TaskForm onSubmit={handleCreateTask} loading={loading} />
                   <Pipeline steps={pipeSteps} progress={progress} />
-                  <ResultBox result={activeTask?.result || null} status={activeTask?.status || 'idle'} />
+                  <ResultBox
+                    result={activeTask?.result || null}
+                    status={activeTask?.status || 'idle'}
+                    taskTitle={activeTask?.title}
+                  />
                 </div>
                 <div className="flex flex-col gap-3">
                   <AgentGrid busyAgents={busyAgents} />
@@ -139,7 +226,7 @@ export default function Dashboard() {
             </div>
           )}
 
-          {/* TASKS */}
+          {/* ── TASKS ── */}
           {page === 'tasks' && (
             <div className="flex flex-col gap-4">
               <div className="flex items-center justify-between">
@@ -158,7 +245,7 @@ export default function Dashboard() {
             </div>
           )}
 
-          {/* AGENTS */}
+          {/* ── AGENTS ── */}
           {page === 'agents' && (
             <div className="flex flex-col gap-4">
               <div>
@@ -178,7 +265,7 @@ export default function Dashboard() {
             </div>
           )}
 
-          {/* TOOL LOGS */}
+          {/* ── TOOL LOGS ── */}
           {page === 'tools' && (
             <div className="flex flex-col gap-4">
               <div className="flex items-center justify-between">
@@ -197,7 +284,7 @@ export default function Dashboard() {
             </div>
           )}
 
-          {/* SETTINGS */}
+          {/* ── SETTINGS ── */}
           {page === 'settings' && (
             <div className="flex flex-col gap-4">
               <div>
@@ -211,21 +298,37 @@ export default function Dashboard() {
                     <span className="text-sm font-medium text-gray-900">Account</span>
                   </div>
                   <div className="grid grid-cols-2 gap-3">
-                    {[['Username', user?.username], ['Email', user?.email], ['Role', 'admin'], ['Status', 'active']].map(([k, v]) => (
-                      <div key={k} className="bg-gray-50 rounded-lg p-3">
+                    {[
+                      ['Username', user?.username],
+                      ['Email',    user?.email],
+                      ['Role',     user?.role],
+                      ['Status',   user?.is_active ? 'active' : 'inactive'],
+                    ].map(([k, v]) => (
+                      <div key={String(k)} className="bg-gray-50 rounded-lg p-3">
                         <div className="text-[11px] text-gray-400 mb-1">{k}</div>
-                        <div className="text-sm font-medium text-gray-900">{v}</div>
+                        <div className="text-sm font-medium text-gray-900">
+                          {k === 'Role'
+                            ? <span className="text-[11px] font-medium px-2.5 py-1 rounded-full bg-brand-50 text-brand-600">{v}</span>
+                            : v
+                          }
+                        </div>
                       </div>
                     ))}
                   </div>
                 </div>
+
                 <div className="bg-white border border-gray-200 rounded-xl p-5">
                   <div className="flex items-center gap-2 mb-4">
                     <i className="ti ti-database text-brand-500" />
                     <span className="text-sm font-medium text-gray-900">Infrastructure</span>
                   </div>
                   <div className="grid grid-cols-2 gap-3">
-                    {[['PostgreSQL', true], ['Redis', true], ['Qdrant', true], ['WebSocket', connected]].map(([k, v]) => (
+                    {[
+                      ['PostgreSQL', true     ],
+                      ['Redis',      true     ],
+                      ['Qdrant',     true     ],
+                      ['WebSocket',  connected],
+                    ].map(([k, v]) => (
                       <div key={String(k)} className="bg-gray-50 rounded-lg p-3">
                         <div className="text-[11px] text-gray-400 mb-1">{k}</div>
                         <div className={`text-sm font-medium ${v ? 'text-green-600' : 'text-red-500'}`}>
@@ -239,7 +342,7 @@ export default function Dashboard() {
             </div>
           )}
 
-          {/* API DOCS */}
+          {/* ── API DOCS ── */}
           {page === 'docs' && (
             <div className="flex flex-col gap-4">
               <div className="flex items-center justify-between">
@@ -255,18 +358,26 @@ export default function Dashboard() {
               </div>
               <div className="grid grid-cols-2 gap-4">
                 {[
-                  { title: 'Auth', icon: 'ti-lock', endpoints: [
-                    { method: 'POST', path: '/auth/register',  desc: 'Create new user account',  color: 'bg-green-50 text-green-700' },
-                    { method: 'POST', path: '/auth/token',     desc: 'Login and get JWT token',   color: 'bg-blue-50 text-blue-700'  },
-                    { method: 'GET',  path: '/auth/me',        desc: 'Get current user info',     color: 'bg-brand-50 text-brand-700'},
-                  ]},
-                  { title: 'Tasks', icon: 'ti-list', endpoints: [
-                    { method: 'POST', path: '/api/tasks',       desc: 'Submit a new task',         color: 'bg-green-50 text-green-700' },
-                    { method: 'GET',  path: '/api/tasks',       desc: 'List all tasks',            color: 'bg-brand-50 text-brand-700' },
-                    { method: 'GET',  path: '/api/tasks/{id}',  desc: 'Get task by ID',            color: 'bg-brand-50 text-brand-700' },
-                    { method: 'GET',  path: '/api/tool-logs',   desc: 'Get tool call analytics',   color: 'bg-brand-50 text-brand-700' },
-                    { method: 'WS',   path: '/api/ws/{id}',     desc: 'Live WebSocket feed',       color: 'bg-orange-50 text-orange-700'},
-                  ]},
+                  {
+                    title    : 'Auth',
+                    icon     : 'ti-lock',
+                    endpoints: [
+                      { method: 'POST', path: '/auth/register', desc: 'Create new user account', color: 'bg-green-50 text-green-700'  },
+                      { method: 'POST', path: '/auth/token',    desc: 'Login and get JWT token', color: 'bg-blue-50 text-blue-700'    },
+                      { method: 'GET',  path: '/auth/me',       desc: 'Get current user info',   color: 'bg-brand-50 text-brand-700'  },
+                    ]
+                  },
+                  {
+                    title    : 'Tasks',
+                    icon     : 'ti-list',
+                    endpoints: [
+                      { method: 'POST', path: '/api/tasks',      desc: 'Submit a new task',         color: 'bg-green-50 text-green-700'  },
+                      { method: 'GET',  path: '/api/tasks',      desc: 'List all tasks',            color: 'bg-brand-50 text-brand-700'  },
+                      { method: 'GET',  path: '/api/tasks/{id}', desc: 'Get task by ID',            color: 'bg-brand-50 text-brand-700'  },
+                      { method: 'GET',  path: '/api/tool-logs',  desc: 'Get tool call analytics',   color: 'bg-brand-50 text-brand-700'  },
+                      { method: 'WS',   path: '/api/ws/{id}',    desc: 'Live WebSocket feed',       color: 'bg-orange-50 text-orange-700'},
+                    ]
+                  },
                 ].map(section => (
                   <div key={section.title} className="bg-white border border-gray-200 rounded-xl p-5">
                     <div className="flex items-center gap-2 mb-4">
@@ -276,7 +387,9 @@ export default function Dashboard() {
                     <div className="flex flex-col gap-2">
                       {section.endpoints.map(ep => (
                         <div key={ep.path} className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg">
-                          <span className={`text-[10px] font-medium px-2 py-1 rounded ${ep.color}`}>{ep.method}</span>
+                          <span className={`text-[10px] font-medium px-2 py-1 rounded ${ep.color} flex-shrink-0`}>
+                            {ep.method}
+                          </span>
                           <div>
                             <div className="text-xs font-medium text-gray-900 font-mono">{ep.path}</div>
                             <div className="text-[11px] text-gray-400">{ep.desc}</div>

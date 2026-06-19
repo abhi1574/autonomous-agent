@@ -5,6 +5,7 @@ interface User {
   username : string
   email    : string
   is_active: boolean
+  role     : 'admin' | 'user' | 'viewer'
 }
 
 interface AuthStore {

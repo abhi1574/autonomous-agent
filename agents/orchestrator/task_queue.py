@@ -7,11 +7,21 @@ load_dotenv()
 
 class TaskQueue:
     def __init__(self):
-        self.client = redis.Redis(
-            host=os.getenv("REDIS_HOST", "localhost"),
-            port=int(os.getenv("REDIS_PORT", 6379)),
-            decode_responses=True
-        )
+        redis_url = os.getenv("REDIS_URL")
+        if redis_url:
+            # Upstash cloud Redis
+            self.client = redis.from_url(
+                redis_url,
+                decode_responses=True,
+                ssl=True
+            )
+        else:
+            # Local Redis
+            self.client = redis.Redis(
+                host = os.getenv("REDIS_HOST", "localhost"),
+                port = int(os.getenv("REDIS_PORT", 6379)),
+                decode_responses=True
+            )
         self.queue_name = "task_queue"
 
     def push(self, task: dict) -> bool:
@@ -60,18 +70,21 @@ class TaskQueue:
     def mark_completed(self, task_id: str, subtask_id: str):
         """Mark a subtask as completed in Redis"""
         key = f"completed:{task_id}"
-        self.client.sadd(key, subtask_id)
-        self.client.expire(key, 86400)  # expire after 24 hours
+        self.client.sadd(key, str(subtask_id))  # ensure string
+        self.client.expire(key, 86400)
         print(f"✅ Marked subtask {subtask_id} complete for task {task_id}")
 
     def get_completed(self, task_id: str) -> set:
         """Get all completed subtask IDs for a task"""
         key = f"completed:{task_id}"
-        return self.client.smembers(key)
+        # decode_responses=True should handle this but be explicit
+        return {str(item) for item in self.client.smembers(key)}
 
     def dependencies_met(self, task_id: str, depends_on: list) -> bool:
         """Check if all dependencies are completed"""
         if not depends_on:
             return True
         completed = self.get_completed(task_id)
-        return all(dep in completed for dep in depends_on)
+        # Normalize both sides to strings for comparison
+        depends_str = {str(d) for d in depends_on}
+        return depends_str.issubset(completed)
