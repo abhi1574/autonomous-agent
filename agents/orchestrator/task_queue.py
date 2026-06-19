@@ -1,6 +1,6 @@
-import redis
-import json
 import os
+import json
+import redis
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -10,82 +10,69 @@ class TaskQueue:
         redis_url = os.getenv("REDIS_URL", "").strip()
 
         if redis_url and redis_url.startswith(("redis://", "rediss://", "unix://")):
-            # Cloud Redis (Upstash)
             self.client = redis.from_url(
                 redis_url,
                 decode_responses=True,
                 ssl=redis_url.startswith("rediss://")
             )
         else:
-            # Local Redis
             self.client = redis.Redis(
                 host            =os.getenv("REDIS_HOST", "localhost"),
                 port            =int(os.getenv("REDIS_PORT", 6379)),
                 decode_responses=True
             )
+
         self.queue_name = "task_queue"
 
-    def push(self, task: dict) -> bool:
-        """Push a task to the queue"""
+    def push(self, job: dict) -> bool:
         try:
-            self.client.lpush(self.queue_name, json.dumps(task))
+            self.client.rpush(self.queue_name, json.dumps(job))
             return True
-        except Exception as e:
-            print(f"❌ Queue push failed: {e}")
+        except Exception:
             return False
 
-    def pop(self) -> dict | None:
-        """Pop a task from the queue (blocking, waits 5s)"""
+    def pop(self, timeout: int = 5):
         try:
-            result = self.client.brpop(self.queue_name, timeout=5)
+            result = self.client.blpop(self.queue_name, timeout=timeout)
             if result:
-                _, data = result
-                return json.loads(data)
+                return json.loads(result[1])
             return None
-        except Exception as e:
-            print(f"❌ Queue pop failed: {e}")
+        except Exception:
             return None
 
     def peek(self) -> list:
-        """See all pending tasks without removing them"""
         try:
             items = self.client.lrange(self.queue_name, 0, -1)
             return [json.loads(i) for i in items]
-        except Exception as e:
-            print(f"❌ Queue peek failed: {e}")
+        except Exception:
             return []
 
     def size(self) -> int:
-        """How many tasks are waiting"""
-        return self.client.llen(self.queue_name)
+        try:
+            return self.client.llen(self.queue_name)
+        except Exception:
+            return 0
 
     def clear(self) -> bool:
-        """Clear the queue"""
         try:
             self.client.delete(self.queue_name)
             return True
-        except Exception as e:
-            print(f"❌ Queue clear failed: {e}")
+        except Exception:
             return False
-    
+
     def mark_completed(self, task_id: str, subtask_id: str):
-        """Mark a subtask as completed in Redis"""
         key = f"completed:{task_id}"
-        self.client.sadd(key, str(subtask_id))  # ensure string
+        self.client.sadd(key, str(subtask_id))
         self.client.expire(key, 86400)
         print(f"✅ Marked subtask {subtask_id} complete for task {task_id}")
 
     def get_completed(self, task_id: str) -> set:
-        """Get all completed subtask IDs for a task"""
         key = f"completed:{task_id}"
-        # decode_responses=True should handle this but be explicit
         return {str(item) for item in self.client.smembers(key)}
 
     def dependencies_met(self, task_id: str, depends_on: list) -> bool:
-        """Check if all dependencies are completed"""
         if not depends_on:
             return True
-        completed = self.get_completed(task_id)
-        # Normalize both sides to strings for comparison
+        completed   = self.get_completed(task_id)
         depends_str = {str(d) for d in depends_on}
         return depends_str.issubset(completed)
