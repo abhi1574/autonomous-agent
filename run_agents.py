@@ -1,6 +1,7 @@
 import threading
 import sys
-import os, time
+import os
+import time
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from agents.research_agent import ResearchAgent
@@ -8,13 +9,17 @@ from agents.rag_agent      import RAGAgent
 from agents.critic_agent   import CriticAgent
 from agents.coding_agent   import CodingAgent
 from agents.browser_agent  import BrowserAgent
+from backend.logger        import get_logger
+
+logger = get_logger("agent.runner")
 
 def run_agent(agent):
-    try:
-        agent.run()
-    except Exception as e:
-        print(f"Agent {agent.agent_name} crashed: {e}")
-        time.sleep(1)
+    while True:
+        try:
+            agent.run()
+        except Exception as e:
+            logger.error(f"Agent {agent.agent_name} crashed: {e}")
+            time.sleep(5)  # wait before restart
 
 if __name__ == "__main__":
     agents = [
@@ -25,19 +30,18 @@ if __name__ == "__main__":
         BrowserAgent(),
     ]
 
-    print("🚀 Starting all agents...")
+    logger.info("🚀 Starting all agents...")
     threads = []
     for agent in agents:
         t = threading.Thread(target=run_agent, args=(agent,), daemon=True)
         t.start()
         threads.append(t)
-        print(f"✅ {agent.agent_name} agent started")
+        logger.info(f"✅ {agent.agent_name} agent started")
 
-    print("✅ All agents running — waiting for jobs from Redis queue")
-    print("Press Ctrl+C to stop")
+    logger.info("✅ All agents running — waiting for jobs")
 
     try:
-        for t in threads:
-            t.join()
+        while True:
+            time.sleep(60)
     except KeyboardInterrupt:
-        print("\n🛑 Shutting down agents")
+        logger.info("🛑 Shutting down agents")
