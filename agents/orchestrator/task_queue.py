@@ -28,7 +28,8 @@ class TaskQueue:
         try:
             self.client.rpush(self.queue_name, json.dumps(job))
             return True
-        except Exception:
+        except Exception as e:
+            print(f"❌ Redis push failed: {e}")
             return False
 
     def pop(self, timeout: int = 5):

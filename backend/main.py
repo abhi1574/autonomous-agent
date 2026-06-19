@@ -101,7 +101,8 @@ async def lifespan(app: FastAPI):
     # Startup
     logger.info("🚀 Autonomous Agent Gateway starting up")
     logger.info(f"📦 Database : {settings.POSTGRES_DB}@{settings.POSTGRES_HOST}")
-    logger.info(f"📦 Redis    : {settings.REDIS_HOST}:{settings.REDIS_PORT}")
+    redis_display = os.getenv("REDIS_URL", "").split("@")[-1] if os.getenv("REDIS_URL") else f"{settings.REDIS_HOST}:{settings.REDIS_PORT}"
+    logger.info(f"📦 Redis    : {redis_display}")
     logger.info(f"📦 Qdrant   : {settings.QDRANT_HOST}:{settings.QDRANT_PORT}")
 
     # Seed admin
