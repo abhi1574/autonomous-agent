@@ -7,7 +7,7 @@ from fastapi.responses import JSONResponse
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
-
+import os
 from backend.config import validate_env, settings
 from backend.logger import get_logger
 from backend.models.database import Base, engine, SessionLocal
