@@ -41,6 +41,6 @@ class Settings:
     GROQ_MODEL       : str = os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile")
     TAVILY_API_KEY   : str = os.getenv("TAVILY_API_KEY", "")
     JWT_SECRET_KEY   : str = os.getenv("JWT_SECRET_KEY", "change-this")
-    CORS_ORIGINS     : list = ["http://localhost:5173"]
+    CORS_ORIGINS     : list = ["http://localhost:5173", "https://autonomous-agent.vercel.app",]
 
 settings = Settings()

@@ -11,7 +11,11 @@ export function useWebSocket(clientId: string) {
   const wsRef = useRef<WebSocket | null>(null)
 
   useEffect(() => {
-    const ws = new WebSocket(`ws://localhost:8000/api/ws/${clientId}`)
+    const WS_BASE = import.meta.env.VITE_API_URL
+      ? import.meta.env.VITE_API_URL.replace('https://', 'wss://').replace('http://', 'ws://')
+      : 'ws://localhost:8000'
+
+    const ws = new WebSocket(`${WS_BASE}/api/ws/${clientId}`)
     wsRef.current = ws
 
     ws.onopen = () => {
