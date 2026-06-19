@@ -7,19 +7,20 @@ load_dotenv()
 
 class TaskQueue:
     def __init__(self):
-        redis_url = os.getenv("REDIS_URL")
-        if redis_url:
-            # Upstash cloud Redis
+        redis_url = os.getenv("REDIS_URL", "").strip()
+
+        if redis_url and redis_url.startswith(("redis://", "rediss://", "unix://")):
+            # Cloud Redis (Upstash)
             self.client = redis.from_url(
                 redis_url,
                 decode_responses=True,
-                ssl=True
+                ssl=redis_url.startswith("rediss://")
             )
         else:
             # Local Redis
             self.client = redis.Redis(
-                host = os.getenv("REDIS_HOST", "localhost"),
-                port = int(os.getenv("REDIS_PORT", 6379)),
+                host            =os.getenv("REDIS_HOST", "localhost"),
+                port            =int(os.getenv("REDIS_PORT", 6379)),
                 decode_responses=True
             )
         self.queue_name = "task_queue"
