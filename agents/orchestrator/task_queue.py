@@ -10,12 +10,14 @@ class TaskQueue:
         redis_url = os.getenv("REDIS_URL", "").strip()
 
         if redis_url and redis_url.startswith(("redis://", "rediss://", "unix://")):
+            # Cloud Redis (Upstash) — remove ssl param, rediss:// handles SSL automatically
             self.client = redis.from_url(
                 redis_url,
-                decode_responses=True,
-                ssl=redis_url.startswith("rediss://")
+                decode_responses=True
+                # ← removed ssl=True — not supported in this redis version
             )
         else:
+            # Local Redis
             self.client = redis.Redis(
                 host            =os.getenv("REDIS_HOST", "localhost"),
                 port            =int(os.getenv("REDIS_PORT", 6379)),
